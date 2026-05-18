@@ -71,4 +71,33 @@ router.post("/force-saison-close", requireAuth, async (req, res) => {
   }
 });
 
+// ⚠️  ENDPOINT TEMPORAIRE ONE-SHOT — SUPPRIMER APRÈS UTILISATION
+// POST /admin/set-super-admin
+router.post("/set-super-admin", async (req, res) => {
+  const { email, secret } = req.body as { email?: string; secret?: string };
+
+  if (!secret || secret !== process.env.SETUP_SECRET) {
+    res.status(403).json({ error: "Secret invalide." });
+    return;
+  }
+
+  if (!email) {
+    res.status(400).json({ error: "email requis." });
+    return;
+  }
+
+  try {
+    const user = await admin.auth().getUserByEmail(email);
+    await admin.auth().setCustomUserClaims(user.uid, { role: "super_admin" });
+    res.json({ success: true, uid: user.uid });
+  } catch (err: any) {
+    if (err.code === "auth/user-not-found") {
+      res.status(404).json({ error: `Aucun compte Firebase pour : ${email}` });
+      return;
+    }
+    sendError(res, err);
+  }
+});
+// ⚠️  FIN ENDPOINT TEMPORAIRE
+
 export default router;

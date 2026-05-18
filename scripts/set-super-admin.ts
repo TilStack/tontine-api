@@ -9,10 +9,15 @@
  *   - Le compte doit déjà exister dans Firebase Auth
  */
 
+import * as path from "path";
 import * as dotenv from "dotenv";
 import * as admin from "firebase-admin";
 
-dotenv.config();
+// Chemin absolu vers .env depuis la position du script (indépendant du cwd)
+dotenv.config({ path: path.resolve(__dirname, "../.env") });
+
+console.log('SA JSON présent:', !!process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+console.log('Premier caractère:', process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.[0]);
 
 // ── Init Firebase Admin ───────────────────────────────────────────────────────
 if (!admin.apps.length) {
