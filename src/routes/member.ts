@@ -72,6 +72,45 @@ router.post("/create", requireAuth, async (req, res) => {
   }
 });
 
+// POST /member/update-role
+router.post("/update-role", requireAuth, async (req, res) => {
+  const { uid, token } = req as AuthRequest;
+  const deptId = token["deptId"] as string | undefined;
+  if (!deptId) {
+    res.status(403).json({ error: "Pas de département associé.", code: "permission-denied" });
+    return;
+  }
+
+  try {
+    const callerDoc = await db()
+      .collection("departments")
+      .doc(deptId)
+      .collection("users")
+      .doc(uid)
+      .get();
+
+    if (callerDoc.data()?.["role"] !== "admin") {
+      throw new ApiError("permission-denied", "Réservé aux admins de département.");
+    }
+
+    const { userId, newRole } = req.body as { userId: string; newRole: string };
+    if (!userId || !newRole) {
+      throw new ApiError("invalid-argument", "userId et newRole requis.");
+    }
+
+    await db()
+      .collection("departments")
+      .doc(deptId)
+      .collection("users")
+      .doc(userId)
+      .update({ role: newRole });
+
+    res.json({ success: true });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
 // POST /member/exclude
 router.post("/exclude", requireAuth, async (req, res) => {
   const { uid: callerUid, token } = req as AuthRequest;
