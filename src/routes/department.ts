@@ -6,7 +6,45 @@ import { ApiError, sendError } from "../middleware/errors";
 const router = Router();
 const db = () => admin.firestore();
 
-// POST /department/provision
+// POST /department/request — public (utilisateur connecté sans deptId)
+router.post("/request", async (req, res) => {
+  try {
+    const { deptName, requesterName, requesterEmail, description, memberCount, adminPassword } =
+      req.body as {
+        deptName: string;
+        requesterName: string;
+        requesterEmail: string;
+        description?: string;
+        memberCount?: number;
+        adminPassword: string;
+      };
+
+    if (!deptName || !requesterName || !requesterEmail) {
+      throw new ApiError("invalid-argument", "deptName, requesterName et requesterEmail requis.");
+    }
+    if (!adminPassword || typeof adminPassword !== "string" || adminPassword.length < 6) {
+      res.status(400).json({ error: "adminPassword requis, minimum 6 caractères." });
+      return;
+    }
+
+    const ref = await db().collection("department_requests").add({
+      deptName,
+      requesterName,
+      requesterEmail,
+      description: description ?? "",
+      memberCount: memberCount ?? 0,
+      adminPassword,
+      status: "pending",
+      createdAt: admin.firestore.Timestamp.now(),
+    });
+
+    res.json({ requestId: ref.id });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// POST /department/provision — super admin uniquement
 router.post("/provision", requireAuth, async (req, res) => {
   const { token } = req as AuthRequest;
   if (token["role"] !== "super_admin") {
@@ -32,14 +70,21 @@ router.post("/provision", requireAuth, async (req, res) => {
       throw new ApiError("failed-precondition", "Cette demande a déjà été traitée.");
     }
 
+    const adminPassword = reqData["adminPassword"] as string | undefined;
+    if (!adminPassword || adminPassword.length < 6) {
+      throw new ApiError(
+        "failed-precondition",
+        "adminPassword absent ou invalide dans la demande. Le demandeur doit resoumettre sa demande."
+      );
+    }
+
     const now = admin.firestore.Timestamp.now();
     const deptId = db().collection("departments").doc().id;
-    const tempPassword = Math.random().toString(36).slice(-10) + "A1!";
 
     const adminUser = await admin.auth().createUser({
       email: reqData["requesterEmail"] as string,
       displayName: reqData["requesterName"] as string,
-      password: tempPassword,
+      password: adminPassword,
     });
 
     await admin.auth().setCustomUserClaims(adminUser.uid, { deptId });
@@ -62,24 +107,31 @@ router.post("/provision", requireAuth, async (req, res) => {
       rang: 0,
       hasBenefited: false,
       joinedAt: now,
-      mustResetPassword: true,
+      mustResetPassword: false,
+    });
+
+    batch.set(db().collection("users").doc(adminUser.uid), {
+      displayName: reqData["requesterName"],
+      email: reqData["requesterEmail"],
+      deptId,
+      createdAt: now,
     });
 
     batch.update(requestRef, { status: "approved" });
     await batch.commit();
 
-    const resetLink = await admin.auth().generatePasswordResetLink(
-      reqData["requesterEmail"] as string
-    );
+    // Supprime adminPassword du doc après usage (sécurité)
+    await requestRef.update({
+      adminPassword: admin.firestore.FieldValue.delete(),
+    });
 
-    console.log(`Department ${deptId} provisioned. Admin reset link: ${resetLink}`);
-    res.json({ deptId, adminUid: adminUser.uid, resetLink });
+    res.json({ deptId, adminUid: adminUser.uid });
   } catch (err) {
     sendError(res, err);
   }
 });
 
-// POST /department/reject
+// POST /department/reject — super admin uniquement
 router.post("/reject", requireAuth, async (req, res) => {
   const { token } = req as AuthRequest;
   if (token["role"] !== "super_admin") {

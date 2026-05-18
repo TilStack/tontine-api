@@ -27,46 +27,67 @@ router.post("/create", requireAuth, async (req, res) => {
       throw new ApiError("permission-denied", "Réservé aux admins de département.");
     }
 
-    const { email, displayName, role } = req.body as {
+    const { email, displayName, role, password } = req.body as {
       email: string;
       displayName: string;
       role: "bureau" | "membre";
+      password: string;
     };
 
-    if (!email || !displayName || !role) {
-      throw new ApiError("invalid-argument", "email, displayName et role requis.");
+    if (!email || !displayName || !role || !password) {
+      throw new ApiError("invalid-argument", "email, displayName, role et password requis.");
+    }
+    if (!["membre", "bureau"].includes(role)) {
+      throw new ApiError("invalid-argument", "role doit être 'membre' ou 'bureau'.");
+    }
+    if (password.length < 6) {
+      throw new ApiError("invalid-argument", "password doit contenir au moins 6 caractères.");
     }
 
-    const tempPassword = Math.random().toString(36).slice(-10) + "A1!";
-
-    const userRecord = await admin.auth().createUser({
-      email,
-      displayName,
-      password: tempPassword,
-    });
+    let userRecord: admin.auth.UserRecord;
+    try {
+      userRecord = await admin.auth().createUser({ email, displayName, password });
+    } catch (err: any) {
+      if (err.code === "auth/email-already-exists") {
+        res.status(409).json({ error: "Un compte existe déjà avec cet email." });
+        return;
+      }
+      throw err;
+    }
 
     await admin.auth().setCustomUserClaims(userRecord.uid, { deptId });
 
     const now = admin.firestore.Timestamp.now();
-    await db()
-      .collection("departments")
-      .doc(deptId)
-      .collection("users")
-      .doc(userRecord.uid)
-      .set({
+    const batch = db().batch();
+
+    batch.set(
+      db().collection("departments").doc(deptId).collection("users").doc(userRecord.uid),
+      {
         displayName,
         email,
         role,
         rang: 0,
         hasBenefited: false,
         joinedAt: now,
-        mustResetPassword: true,
-      });
+        mustResetPassword: false,
+      }
+    );
 
-    const resetLink = await admin.auth().generatePasswordResetLink(email);
-    console.log(`Reset link for ${email}: ${resetLink}`);
+    batch.set(db().collection("users").doc(userRecord.uid), {
+      displayName,
+      email,
+      deptId,
+      createdAt: now,
+    });
 
-    res.json({ uid: userRecord.uid, resetLink });
+    try {
+      await batch.commit();
+    } catch (firestoreErr) {
+      await admin.auth().deleteUser(userRecord.uid).catch(() => {});
+      throw firestoreErr;
+    }
+
+    res.json({ success: true, uid: userRecord.uid, displayName, email });
   } catch (err) {
     sendError(res, err);
   }
