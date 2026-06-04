@@ -127,20 +127,26 @@ router.post("/accept", requireAuth, async (req, res) => {
     }
 
     const batch = db().batch();
-    const userRef = db()
-      .collection("departments")
-      .doc(deptId)
-      .collection("users")
-      .doc(uid);
+    const displayName = authToken.name ?? email.split("@")[0];
 
-    batch.set(userRef, {
-      displayName: authToken.name ?? email.split("@")[0],
+    batch.set(
+      db().collection("departments").doc(deptId).collection("users").doc(uid),
+      {
+        displayName,
+        email,
+        role: inv["role"],
+        rang: 0,
+        hasBenefited: false,
+        joinedAt: now,
+        mustResetPassword: false,
+      }
+    );
+
+    batch.set(db().collection("users").doc(uid), {
+      displayName,
       email,
-      role: inv["role"],
-      rang: 0,
-      hasBenefited: false,
-      joinedAt: now,
-      mustResetPassword: false,
+      deptId,
+      createdAt: now,
     });
 
     batch.update(invitationRef, { used: true });

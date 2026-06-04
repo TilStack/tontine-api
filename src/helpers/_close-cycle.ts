@@ -72,7 +72,7 @@ export async function closeCycle(
     }
     txn.update(saisonRef, saisonUpdate);
 
-    const caisseRef = db.doc(`departments/${deptId}/caisse`);
+    const caisseRef = db.doc(`departments/${deptId}/caisse/main`);
     txn.set(
       caisseRef,
       {
