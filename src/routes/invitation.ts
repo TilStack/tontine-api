@@ -104,6 +104,12 @@ router.post("/accept", requireAuth, async (req, res) => {
     if (!deptId || !token) {
       throw new ApiError("invalid-argument", "deptId et token requis.");
     }
+    if (authToken["role"] === "super_admin") {
+      throw new ApiError(
+        "permission-denied",
+        "Un compte Super Admin ne peut pas rejoindre un département."
+      );
+    }
 
     const invitationRef = db()
       .collection("departments")

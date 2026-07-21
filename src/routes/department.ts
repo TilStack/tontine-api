@@ -156,6 +156,7 @@ router.post("/reject", requireAuth, async (req, res) => {
       status: "rejected",
       rejectedAt: admin.firestore.Timestamp.now(),
       rejectionReason: reason.trim(),
+      adminPassword: admin.firestore.FieldValue.delete(),
     });
 
     res.json({ success: true });

@@ -72,6 +72,10 @@ export async function closeCycle(
     }
     txn.update(saisonRef, saisonUpdate);
 
+    newOrder.forEach((memberUid, idx) => {
+      txn.update(db.doc(`departments/${deptId}/users/${memberUid}`), { rang: idx + 1 });
+    });
+
     const caisseRef = db.doc(`departments/${deptId}/caisse/main`);
     txn.set(
       caisseRef,
